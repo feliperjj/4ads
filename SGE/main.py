@@ -1,5 +1,5 @@
 from database import Database
-from gui.main_window import MainWindow
+from SGE.gui.main_window import MainWindow
 
 
 if __name__ == "__main__":
