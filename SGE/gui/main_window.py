@@ -1,12 +1,15 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from products import CadastroProduto
 
+# Usamos imports relativos (com '.') porque 'products', 'movements' e 'suppliers'
+# estão no mesmo pacote (pasta 'gui') que 'main_window.py'.
+from .products import CadastroProduto
+from .movements import MovimentacaoEstoque
+from .suppliers import GerenciarFornecedores
 
-from movements import MovimentacaoEstoque
-from suppliers import GerenciarFornecedores
 
 class MainWindow(tk.Tk):
+
     def __init__(self, db):
         super().__init__()
         self.db = db
@@ -14,6 +17,7 @@ class MainWindow(tk.Tk):
         self.geometry("1200x800")
         self._criar_menu()
         self._criar_widgets()
+        self._atualizar_lista()  # Chamada inicial para popular a lista
         self._verificar_alertas()
 
     def _criar_menu(self):
@@ -30,9 +34,12 @@ class MainWindow(tk.Tk):
         self.tree_produtos.heading('ID', text='ID')
         self.tree_produtos.heading('Código', text='Código')
         self.tree_produtos.heading('Nome', text='Nome')
-        self.tree_produtos.heading('Quantidade', text='Quantidade')
+        self.tree_produtos.heading('Quantidade', text='Quantidade em Estoque')
+
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.tree_produtos.yview)
+        self.tree_produtos.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
         self.tree_produtos.pack(fill=tk.BOTH, expand=True)
-        self._atualizar_lista()
 
     def _atualizar_lista(self):
         for item in self.tree_produtos.get_children():
@@ -42,10 +49,18 @@ class MainWindow(tk.Tk):
             self.tree_produtos.insert('', tk.END, values=produto)
 
     def _verificar_alertas(self):
-        produtos = self.db.executar('''SELECT nome, quantidade, quantidade_minima 
-                                     FROM produtos WHERE quantidade <= quantidade_minima''').fetchall()
-        if produtos:
-            messagebox.showwarning("Alerta", "Produtos precisando de reposição!")
+        produtos_alerta = self.db.executar('''
+                                           SELECT nome, quantidade, quantidade_minima
+                                           FROM produtos
+                                           WHERE quantidade <= quantidade_minima
+                                           ''').fetchall()
+
+        if produtos_alerta:
+            nomes_produtos = "\n".join([f"- {p[0]} (Estoque: {p[1]}, Mínimo: {p[2]})" for p in produtos_alerta])
+            messagebox.showwarning(
+                "Alerta de Estoque Baixo",
+                f"Os seguintes produtos atingiram o estoque mínimo e precisam de reposição:\n\n{nomes_produtos}"
+            )
 
     def abrir_cadastro_produto(self):
         CadastroProduto(self, self.db)
