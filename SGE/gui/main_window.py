@@ -10,7 +10,8 @@ from SGE.gui.suppliers import GerenciarFornecedores
 from SGE.gui.reports import RelatoriosVendas
 from SGE.gui.users import GerenciarUsuarios  # Novo import
 from SGE.gui.auditoria import HistoricoAuditoria  # Novo import
-from SGE.gui.theme_manager import ThemeManager  # Novo import
+from SGE.gui.theme_manager import ThemeManager   # Novo import
+from SGE.gui.categories import GerenciarCategorias
 
 
 class MainWindow(tk.Tk):
@@ -46,6 +47,9 @@ class MainWindow(tk.Tk):
         operacoes_menu.add_command(label="Cadastrar Produto", command=self.abrir_cadastro_produto)
         operacoes_menu.add_command(label="Movimentação de Estoque", command=self.abrir_movimentacao)
         operacoes_menu.add_command(label="Histórico de Movimentações", command=self.abrir_historico_movimentacoes)
+        # NOVO: Item de menu para gerenciar categorias
+        operacoes_menu.add_separator()
+        operacoes_menu.add_command(label="Gerenciar Categorias", command=self.abrir_gerenciar_categorias)
         menu_bar.add_cascade(label="Operações", menu=operacoes_menu)
 
         fornecedores_menu = tk.Menu(menu_bar, tearoff=0)
@@ -83,27 +87,36 @@ class MainWindow(tk.Tk):
         # Barra de Pesquisa Global para Produtos
         frame_busca_produtos = ttk.Frame(frame_produtos)
         frame_busca_produtos.pack(fill=tk.X, pady=5)
+
         ttk.Label(frame_busca_produtos, text="Pesquisar Produto:").pack(side=tk.LEFT, padx=5)
         self.busca_produto_entry = ttk.Entry(frame_busca_produtos)
         self.busca_produto_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.busca_produto_entry.bind('<KeyRelease>', self._filtrar_produtos)  # Filtra ao digitar
 
+        ttk.Label(frame_busca_produtos, text="Categoria:").pack(side=tk.LEFT, padx=(10, 5))
+        self.categoria_filtro_combobox = ttk.Combobox(frame_busca_produtos, state='readonly', width=30)
+        self.categoria_filtro_combobox.pack(side=tk.LEFT, padx=5)
+        self.categoria_filtro_combobox.bind('<<ComboboxSelected>>', self._filtrar_produtos)
+        self._carregar_categorias_filtro() # Carrega as categorias no filtro
+
         self.tree_produtos = ttk.Treeview(frame_produtos,
-                                          columns=('ID', 'Código', 'Nome', 'Quantidade', 'Preço Custo', 'Preço Venda',
-                                                   'Quantidade Mínima'), show='headings')
+                                          columns=('ID', 'Código', 'Nome', 'Categoria', 'Quantidade', 'Preço Custo', 'Preço Venda', 'Quantidade Mínima'),
+                                          show='headings')
 
         # Cabeçalhos e ordenação
-        for col in ['ID', 'Código', 'Nome', 'Quantidade', 'Preço Custo', 'Preço Venda', 'Quantidade Mínima']:
+        for col in ['ID', 'Código', 'Nome', 'Categoria', 'Quantidade', 'Preço Custo', 'Preço Venda', 'Quantidade Mínima']:
             self.tree_produtos.heading(col, text=col,
                                        command=lambda c=col: self._sort_treeview(self.tree_produtos, c, False))
 
+        # MODIFICADO: Ajuste das colunas
         self.tree_produtos.column('ID', width=50, anchor=tk.CENTER)
         self.tree_produtos.column('Código', width=100, anchor=tk.CENTER)
-        self.tree_produtos.column('Nome', width=200)
+        self.tree_produtos.column('Nome', width=250)
+        self.tree_produtos.column('Categoria', width=150) # Nova coluna
         self.tree_produtos.column('Quantidade', width=100, anchor=tk.CENTER)
         self.tree_produtos.column('Preço Custo', width=100, anchor=tk.CENTER)
         self.tree_produtos.column('Preço Venda', width=100, anchor=tk.CENTER)
-        self.tree_produtos.column('Quantidade Mínima', width=100, anchor=tk.CENTER)
+        self.tree_produtos.column('Quantidade Mínima', width=120, anchor=tk.CENTER)
 
         self.tree_produtos.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -114,46 +127,64 @@ class MainWindow(tk.Tk):
         frame_botoes_produtos = ttk.Frame(self, padding="10 0 10 10")
         frame_botoes_produtos.pack(pady=5)
 
-        ttk.Button(frame_botoes_produtos, text="Adicionar Produto", command=self.abrir_cadastro_produto).pack(
-            side=tk.LEFT, padx=5)
+        ttk.Button(frame_botoes_produtos, text="Adicionar Produto", command=self.abrir_cadastro_produto).pack(side=tk.LEFT, padx=5)
         ttk.Button(frame_botoes_produtos, text="Editar Produto", command=self.editar_produto).pack(side=tk.LEFT, padx=5)
-        ttk.Button(frame_botoes_produtos, text="Excluir Produto", command=self.excluir_produto).pack(side=tk.LEFT,
-                                                                                                     padx=5)
-        ttk.Button(frame_botoes_produtos, text="Atualizar Lista", command=self._atualizar_lista).pack(side=tk.LEFT,
-                                                                                                      padx=5)
+        ttk.Button(frame_botoes_produtos, text="Excluir Produto", command=self.excluir_produto).pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_botoes_produtos, text="Atualizar Lista", command=self._atualizar_lista).pack(side=tk.LEFT, padx=5)
 
         self._atualizar_lista()
 
-    # --- Funções de Ordenação (Treeview) ---
-    def _sort_treeview(self, tree, col, reverse):
-        # Pega os dados da coluna
-        data = [(tree.set(child, col), child) for child in tree.get_children('')]
+    # --- Funções de Ordenação---
+    def _carregar_categorias_filtro(self):
+        categorias = self.db.executar("SELECT nome FROM categorias ORDER BY nome").fetchall()
+        valores_filtro = ["Todas as Categorias"] + [cat[0] for cat in categorias]
+        self.categoria_filtro_combobox['values'] = valores_filtro
+        self.categoria_filtro_combobox.set("Todas as Categorias")
 
-        # Tenta converter para número para ordenar corretamente se for o caso
+        if len(valores_filtro) <= 1:
+            self.categoria_filtro_combobox.config(state='disabled')
+        else:
+            self.categoria_filtro_combobox.config(state='readonly')
+
+    def _sort_treeview(self, tree, col, reverse):
+        data = [(tree.set(child, col), child) for child in tree.get_children('')]
         try:
             data.sort(key=lambda t: float(t[0]) if isinstance(float(t[0]), (int, float)) else t[0], reverse=reverse)
-        except ValueError:
+        except (ValueError, TypeError):
             data.sort(key=lambda t: t[0], reverse=reverse)
-
         for index, (val, item) in enumerate(data):
             tree.move(item, '', index)  # Move os itens para a nova posição
 
         # Troca a direção da ordenação para o próximo clique
         tree.heading(col, command=lambda: self._sort_treeview(tree, col, not reverse))
 
-    # --- Funções de Filtro (Treeview) ---
+    # --- Funções de Filtro---
     def _filtrar_produtos(self, event=None):
-        termo_busca = self.busca_produto_entry.get().lower()
         for item in self.tree_produtos.get_children():
             self.tree_produtos.delete(item)
 
-        query = "SELECT id, codigo, nome, quantidade, preco_custo, preco_venda, quantidade_minima FROM produtos WHERE LOWER(nome) LIKE ? OR LOWER(codigo) LIKE ?"
-        produtos = self.db.executar(query, (f'%{termo_busca}%', f'%{termo_busca}%')).fetchall()
+        termo_busca = self.busca_produto_entry.get().lower()
+        categoria_selecionada = self.categoria_filtro_combobox.get()
+
+        query = '''SELECT p.id, p.codigo, p.nome, IFNULL(c.nome, 'Sem Categoria'), 
+                   p.quantidade, p.preco_custo, p.preco_venda, p.quantidade_minima
+                   FROM produtos p
+                   LEFT JOIN categorias c ON p.categoria_id = c.id
+                   WHERE (LOWER(p.nome) LIKE ? OR LOWER(p.codigo) LIKE ?)'''
+
+        params = [f'%{termo_busca}%', f'%{termo_busca}%']
+
+        if categoria_selecionada and categoria_selecionada != "Todas as Categorias":
+            query += " AND c.nome = ?"
+            params.append(categoria_selecionada)
+
+        produtos = self.db.executar(query, tuple(params)).fetchall()
         for produto in produtos:
             self.tree_produtos.insert('', tk.END, values=produto)
 
     def _atualizar_lista(self):
-        self.busca_produto_entry.delete(0, tk.END)  # Limpa a busca ao atualizar
+        self.busca_produto_entry.delete(0, tk.END)
+        self._carregar_categorias_filtro()
         self._filtrar_produtos()  # Chama o filtro sem termo de busca para listar todos
 
     def _verificar_alertas(self):
@@ -192,13 +223,10 @@ class MainWindow(tk.Tk):
         if not selected_item:
             messagebox.showwarning("Aviso", "Selecione um produto para editar.")
             return
-
         produto_id = self.tree_produtos.item(selected_item)['values'][0]
-        produto_data = self.db.executar("SELECT * FROM produtos WHERE id = ?", (produto_id,)).fetchone()
-
+        produto_data = self.db.executar("SELECT id, codigo, nome, categoria_id, preco_custo, preco_venda, quantidade, quantidade_minima FROM produtos WHERE id = ?", (produto_id,)).fetchone()
         if produto_data:
-            self.db.registrar_auditoria(self.usuario_logado['id'], 'Abriu Edição de Produto',
-                                        f"Produto ID: {produto_id}")
+            self.db.registrar_auditoria(self.usuario_logado['id'], 'Abriu Edição de Produto', f"Produto ID: {produto_id}")
             CadastroProduto(self, self.db, self._atualizar_lista, self.usuario_logado, produto_data)
 
     def excluir_produto(self):
@@ -206,19 +234,15 @@ class MainWindow(tk.Tk):
         if not selected_item:
             messagebox.showwarning("Aviso", "Selecione um produto para excluir.")
             return
-
         produto_id = self.tree_produtos.item(selected_item)['values'][0]
         nome_produto = self.tree_produtos.item(selected_item)['values'][2]
-
         if self.usuario_logado['nivel_acesso'] != 'administrador':
             messagebox.showerror("Permissão Negada", "Você não tem permissão para excluir produtos.")
             return
-
         if messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja excluir o produto '{nome_produto}'?"):
             try:
                 self.db.executar("DELETE FROM produtos WHERE id = ?", (produto_id,))
-                self.db.registrar_auditoria(self.usuario_logado['id'], 'Excluiu Produto',
-                                            f"Produto '{nome_produto}' (ID: {produto_id})")
+                self.db.registrar_auditoria(self.usuario_logado['id'], 'Excluiu Produto', f"Produto '{nome_produto}' (ID: {produto_id})")
                 self._atualizar_lista()
                 messagebox.showinfo("Sucesso", "Produto excluído com sucesso!")
             except Exception as e:
@@ -240,14 +264,17 @@ class MainWindow(tk.Tk):
         self.db.registrar_auditoria(self.usuario_logado['id'], 'Abriu Relatórios de Vendas')
         RelatoriosVendas(self, self.db)
 
+    def abrir_gerenciar_categorias(self):
+        self.db.registrar_auditoria(self.usuario_logado['id'], 'Abriu Gerenciar Categorias')
+        GerenciarCategorias(self, self.db, self._atualizar_lista)
+
     def abrir_gerenciar_usuarios(self):
         if self.usuario_logado['nivel_acesso'] == 'administrador':
             self.db.registrar_auditoria(self.usuario_logado['id'], 'Abriu Gerenciar Usuários')
             GerenciarUsuarios(self, self.db, self.usuario_logado)
         else:
             messagebox.showerror("Permissão Negada", "Você não tem permissão para gerenciar usuários.")
-            self.db.registrar_auditoria(self.usuario_logado['id'], 'Tentativa de Acesso Negado',
-                                        'Tentou acessar Gerenciar Usuários')
+            self.db.registrar_auditoria(self.usuario_logado['id'], 'Tentativa de Acesso Negado', 'Tentou acessar Gerenciar Usuários')
 
     def abrir_historico_auditoria(self):
         if self.usuario_logado['nivel_acesso'] == 'administrador':
@@ -255,28 +282,27 @@ class MainWindow(tk.Tk):
             HistoricoAuditoria(self, self.db)
         else:
             messagebox.showerror("Permissão Negada", "Você não tem permissão para visualizar o histórico de auditoria.")
-            self.db.registrar_auditoria(self.usuario_logado['id'], 'Tentativa de Acesso Negado',
-                                        'Tentou acessar Histórico de Auditoria')
+            self.db.registrar_auditoria(self.usuario_logado['id'], 'Tentativa de Acesso Negado', 'Tentou acessar Histórico de Auditoria')
 
-    # --- Funções de Exportação ---
     def exportar_produtos_csv(self):
         file_path = tk.filedialog.asksaveasfilename(defaultextension=".csv",
                                                     filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
                                                     title="Salvar Produtos como CSV")
         if not file_path:
             return
-
         try:
-            produtos = self.db.executar(
-                "SELECT id, codigo, nome, categoria, preco_custo, preco_venda, quantidade, quantidade_minima FROM produtos").fetchall()
+            query = '''SELECT p.id, p.codigo, p.nome, IFNULL(c.nome, ''), 
+                       p.preco_custo, p.preco_venda, p.quantidade, p.quantidade_minima
+                       FROM produtos p
+                       LEFT JOIN categorias c ON p.categoria_id = c.id'''
+            produtos = self.db.executar(query).fetchall()
             with open(file_path, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
                 writer.writerow(['ID', 'Código', 'Nome', 'Categoria', 'Preço Custo', 'Preço Venda', 'Quantidade',
                                  'Quantidade Mínima'])
                 writer.writerows(produtos)
             messagebox.showinfo("Exportação", "Produtos exportados com sucesso para CSV!")
-            self.db.registrar_auditoria(self.usuario_logado['id'], 'Exportou Dados',
-                                        'Exportou lista de produtos para CSV')
+            self.db.registrar_auditoria(self.usuario_logado['id'], 'Exportou Dados', 'Exportou lista de produtos para CSV')
         except Exception as e:
             messagebox.showerror("Erro de Exportação", f"Erro ao exportar produtos: {str(e)}")
 
@@ -286,7 +312,6 @@ class MainWindow(tk.Tk):
                                                     title="Salvar Movimentações como CSV")
         if not file_path:
             return
-
         try:
             movimentacoes = self.db.executar('''SELECT m.id, p.nome, m.tipo, m.quantidade, m.data, m.observacao, f.nome, u.username
                                                FROM movimentacoes m
@@ -300,8 +325,7 @@ class MainWindow(tk.Tk):
                     ['ID Movimentacao', 'Produto', 'Tipo', 'Quantidade', 'Data', 'Observacao', 'Fornecedor', 'Usuario'])
                 writer.writerows(movimentacoes)
             messagebox.showinfo("Exportação", "Movimentações exportadas com sucesso para CSV!")
-            self.db.registrar_auditoria(self.usuario_logado['id'], 'Exportou Dados',
-                                        'Exportou histórico de movimentações para CSV')
+            self.db.registrar_auditoria(self.usuario_logado['id'], 'Exportou Dados', 'Exportou histórico de movimentações para CSV')
         except Exception as e:
             messagebox.showerror("Erro de Exportação", f"Erro ao exportar movimentações: {str(e)}")
 
