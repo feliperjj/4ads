@@ -3,66 +3,76 @@ from tkinter import ttk, messagebox
 
 
 class CadastroProduto(tk.Toplevel):
-
-    def __init__(self, parent, db):
+    def __init__(self, parent, db, atualizar_lista_callback, produto_data=None):
         super().__init__(parent)
         self.parent = parent
         self.db = db
-        self.title("Cadastro de Produto")
-        self.geometry("350x250")
-        self.transient(parent)
-        self.grab_set()  # Modal
+        self.atualizar_lista_callback = atualizar_lista_callback
+        self.produto_data = produto_data  # Para edição
+        self.title("Cadastro de Produto" if not produto_data else "Editar Produto")
         self._criar_formulario()
+        if self.produto_data:
+            self._preencher_formulario()
 
     def _criar_formulario(self):
-        frame = ttk.Frame(self, padding="10")
-        frame.pack(fill=tk.BOTH, expand=True)
-
         campos = [
             ('Código:', 'codigo'),
             ('Nome:', 'nome'),
             ('Preço Custo:', 'preco_custo'),
+            ('Preço Venda:', 'preco_venda'),  # Adicionado Preço Venda
             ('Quantidade Mínima:', 'quantidade_minima'),
             ('Quantidade Inicial:', 'quantidade')
         ]
 
         self.entries = {}
-        for idx, (label_text, field) in enumerate(campos):
-            label = ttk.Label(frame, text=label_text)
-            label.grid(row=idx, column=0, padx=5, pady=5, sticky="w")
-            entry = ttk.Entry(frame)
-            entry.grid(row=idx, column=1, padx=5, pady=5, sticky="ew")
+        for idx, (label, field) in enumerate(campos):
+            ttk.Label(self, text=label).grid(row=idx, column=0, padx=5, pady=5, sticky='w')
+            entry = ttk.Entry(self)
+            entry.grid(row=idx, column=1, padx=5, pady=5, sticky='ew')
             self.entries[field] = entry
 
-        frame.grid_columnconfigure(1, weight=1)
+        ttk.Button(self, text="Salvar", command=self._salvar).grid(row=len(campos), columnspan=2, pady=10)
 
-        btn_salvar = ttk.Button(self, text="Salvar", command=self._salvar)
-        btn_salvar.pack(pady=10)
+        self.grid_columnconfigure(1, weight=1)  # Para expandir o campo de entrada
 
-        self.entries['codigo'].focus_set()
+    def _preencher_formulario(self):
+        # O produto_data é uma tupla, os índices correspondem à ordem das colunas no SELECT *
+        # id, codigo, nome, categoria, preco_custo, preco_venda, quantidade, quantidade_minima
+        self.entries['codigo'].insert(0, self.produto_data[1])
+        self.entries['nome'].insert(0, self.produto_data[2])
+        # self.entries['categoria'].insert(0, self.produto_data[3]) # Se a categoria for adicionada ao formulário
+        self.entries['preco_custo'].insert(0, self.produto_data[4])
+        self.entries['preco_venda'].insert(0, self.produto_data[5])
+        self.entries['quantidade'].insert(0, self.produto_data[6])
+        self.entries['quantidade_minima'].insert(0, self.produto_data[7])
 
     def _salvar(self):
         try:
             codigo = self.entries['codigo'].get()
             nome = self.entries['nome'].get()
-            preco_custo = float(self.entries['preco_custo'].get().replace(',', '.'))
+            preco_custo = float(self.entries['preco_custo'].get())
+            preco_venda = float(self.entries['preco_venda'].get())
             quantidade_minima = int(self.entries['quantidade_minima'].get())
             quantidade = int(self.entries['quantidade'].get())
 
-            if not codigo or not nome:
-                messagebox.showerror("Erro de Validação", "Código e Nome são obrigatórios.", parent=self)
-                return
+            if self.produto_data:  # Edição
+                produto_id = self.produto_data[0]
+                self.db.executar('''UPDATE produtos SET 
+                                  codigo = ?, nome = ?, preco_custo = ?, preco_venda = ?, quantidade = ?, quantidade_minima = ?
+                                  WHERE id = ?''',
+                                 (codigo, nome, preco_custo, preco_venda, quantidade, quantidade_minima, produto_id))
+                messagebox.showinfo("Sucesso", "Produto atualizado com sucesso!")
+            else:  # Cadastro
+                self.db.executar('''INSERT INTO produtos 
+                                  (codigo, nome, preco_custo, preco_venda, quantidade_minima, quantidade)
+                                  VALUES (?, ?, ?, ?, ?, ?)''',
+                                 (codigo, nome, preco_custo, preco_venda, quantidade_minima, quantidade))
+                messagebox.showinfo("Sucesso", "Produto cadastrado com sucesso!")
 
-            self.db.executar('''
-                             INSERT INTO produtos (codigo, nome, preco_custo, quantidade_minima, quantidade)
-                             VALUES (?, ?, ?, ?, ?)
-                             ''', (codigo, nome, preco_custo, quantidade_minima, quantidade))
-
-            messagebox.showinfo("Sucesso", "Produto cadastrado com sucesso!", parent=self)
-            self.parent._atualizar_lista()
+            self.atualizar_lista_callback()
             self.destroy()
         except ValueError:
-            messagebox.showerror("Erro de Formato",
-                                 "Verifique se os campos numéricos (preço, quantidade) estão corretos.", parent=self)
+            messagebox.showerror("Erro de Entrada",
+                                 "Por favor, insira valores numéricos válidos para preço e quantidade.")
         except Exception as e:
-            messagebox.showerror("Erro ao Salvar", str(e), parent=self)
+            messagebox.showerror("Erro", str(e))
