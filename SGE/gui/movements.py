@@ -4,14 +4,14 @@ from datetime import datetime
 
 
 class MovimentacaoEstoque(tk.Toplevel):
-    def __init__(self, parent, db, atualizar_lista_callback, usuario_logado):  # Adicionado usuario_logado
+    def __init__(self, parent, db, atualizar_lista_callback, usuario_logado):
         super().__init__(parent)
         self.parent = parent
         self.db = db
         self.atualizar_lista_callback = atualizar_lista_callback
-        self.usuario_logado = usuario_logado  # Armazena o usuário logado
+        self.usuario_logado = usuario_logado
         self.title("Movimentação de Estoque")
-        self.geometry("500x350")  # Aumentado para novos campos
+        self.geometry("500x350")
 
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
@@ -40,7 +40,7 @@ class MovimentacaoEstoque(tk.Toplevel):
                                               values=["entrada", "saida", "devolucao_cliente", "devolucao_fornecedor",
                                                       "ajuste"], state='readonly')
         self.tipo_mov_combobox.grid(row=2, column=1, padx=5, pady=5, sticky='ew')
-        self.tipo_mov_combobox.set("entrada")  # Valor padrão
+        self.tipo_mov_combobox.set("entrada")
         self.tipo_mov_combobox.bind('<<ComboboxSelected>>', self._habilitar_desabilitar_fornecedor)
 
         ttk.Label(input_frame, text="Fornecedor (Entrada/Dev. Forn.):").grid(row=3, column=0, padx=5, pady=5,
@@ -63,19 +63,19 @@ class MovimentacaoEstoque(tk.Toplevel):
         if tipo_selecionado in ['entrada', 'devolucao_fornecedor']:
             self.fornecedor_combobox.config(state='readonly')
         else:
-            self.fornecedor_combobox.set("")  # Limpa a seleção
+            self.fornecedor_combobox.set("")
             self.fornecedor_combobox.config(state='disabled')
 
     def _carregar_fornecedores(self):
         fornecedores = self.db.executar("SELECT id, nome FROM fornecedores ORDER BY nome").fetchall()
         fornecedor_nomes = [""]
-        self.fornecedores_map = {"": None}  # Mapeia vazio para None
+        self.fornecedores_map = {"": None}
         for f_id, f_nome in fornecedores:
             fornecedor_nomes.append(f_nome)
             self.fornecedores_map[f_nome] = f_id
         self.fornecedor_combobox['values'] = fornecedor_nomes
         self.fornecedor_combobox.set("")
-        self._habilitar_desabilitar_fornecedor()  # Define o estado inicial
+        self._habilitar_desabilitar_fornecedor()
 
     def _processar(self):
         codigo = self.codigo_entry.get()
@@ -144,9 +144,9 @@ class MovimentacaoEstoque(tk.Toplevel):
                 fornecedor_id = None
 
             self.db.executar("UPDATE produtos SET quantidade = ? WHERE id = ?", (nova_quantidade, produto_id))
-            self.db.executar('''INSERT INTO movimentacoes 
-                              (produto_id, tipo, quantidade, data, observacao, fornecedor_id, usuario_id)
-                              VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            self.db.executar('''INSERT INTO movimentacoes
+                                (produto_id, tipo, quantidade, data, observacao, fornecedor_id, usuario_id)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)''',
                              (produto_id, tipo, quantidade, datetime.now(), observacao, fornecedor_id,
                               self.usuario_logado['id']))
 
@@ -168,7 +168,7 @@ class HistoricoMovimentacoes(tk.Toplevel):
         self.parent = parent
         self.db = db
         self.title("Histórico de Movimentações")
-        self.geometry("1100x600")  # Aumentado
+        self.geometry("1200x600")
 
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
@@ -210,25 +210,28 @@ class HistoricoMovimentacoes(tk.Toplevel):
         self.data_fim_entry.bind('<KeyRelease>', self._filtrar_historico)
 
         self.tree_historico = ttk.Treeview(self,
-                                           columns=('ID Mov.', 'Produto', 'Tipo', 'Quantidade', 'Data', 'Observação',
-                                                    'Fornecedor', 'Usuário'), show='headings')  # Nova coluna Usuário
+                                           columns=('ID Mov.', 'Produto', 'Categoria', 'Tipo', 'Quantidade', 'Data',
+                                                    'Observação',
+                                                    'Fornecedor', 'Usuário'), show='headings')
         self.tree_historico.heading('ID Mov.', text='ID Mov.')
         self.tree_historico.heading('Produto', text='Produto')
+        self.tree_historico.heading('Categoria', text='Categoria')
         self.tree_historico.heading('Tipo', text='Tipo')
         self.tree_historico.heading('Quantidade', text='Quantidade')
         self.tree_historico.heading('Data', text='Data/Hora')
         self.tree_historico.heading('Observação', text='Observação')
         self.tree_historico.heading('Fornecedor', text='Fornecedor')
-        self.tree_historico.heading('Usuário', text='Usuário')  # Nova coluna
+        self.tree_historico.heading('Usuário', text='Usuário')
 
-        self.tree_historico.column('ID Mov.', width=70, anchor=tk.CENTER)
+        self.tree_historico.column('ID Mov.', width=60, anchor=tk.CENTER)
         self.tree_historico.column('Produto', width=150)
+        self.tree_historico.column('Categoria', width=120)
         self.tree_historico.column('Tipo', width=100, anchor=tk.CENTER)
-        self.tree_historico.column('Quantidade', width=100, anchor=tk.CENTER)
-        self.tree_historico.column('Data', width=150, anchor=tk.CENTER)
+        self.tree_historico.column('Quantidade', width=80, anchor=tk.CENTER)
+        self.tree_historico.column('Data', width=140, anchor=tk.CENTER)
         self.tree_historico.column('Observação', width=200)
         self.tree_historico.column('Fornecedor', width=120)
-        self.tree_historico.column('Usuário', width=100)  # Largura da nova coluna
+        self.tree_historico.column('Usuário', width=100)
 
         self.tree_historico.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -245,17 +248,26 @@ class HistoricoMovimentacoes(tk.Toplevel):
         data_inicio_str = self.data_inicio_entry.get()
         data_fim_str = self.data_fim_entry.get()
 
-        query = '''SELECT m.id, p.nome, m.tipo, m.quantidade, m.data, m.observacao, f.nome, u.username
+        query = '''SELECT m.id, \
+                          p.nome, \
+                          IFNULL(c.nome, 'Sem Categoria'), \
+                          m.tipo, \
+                          m.quantidade,
+                          m.data, \
+                          m.observacao, \
+                          f.nome, \
+                          u.username
                    FROM movimentacoes m
-                   JOIN produtos p ON m.produto_id = p.id
-                   LEFT JOIN fornecedores f ON m.fornecedor_id = f.id
-                   LEFT JOIN usuarios u ON m.usuario_id = u.id
-                   WHERE 1=1'''
+                            JOIN produtos p ON m.produto_id = p.id
+                            LEFT JOIN categorias c ON p.categoria_id = c.id
+                            LEFT JOIN fornecedores f ON m.fornecedor_id = f.id
+                            LEFT JOIN usuarios u ON m.usuario_id = u.id
+                   WHERE 1 = 1'''
         params = []
 
         if termo_busca:
-            query += " AND LOWER(p.nome) LIKE ?"
-            params.append(f'%{termo_busca}%')
+            query += " AND (LOWER(p.nome) LIKE ? OR LOWER(c.nome) LIKE ?)"
+            params.extend([f'%{termo_busca}%', f'%{termo_busca}%'])
 
         if tipo_selecionado:
             query += " AND m.tipo = ?"
@@ -267,7 +279,7 @@ class HistoricoMovimentacoes(tk.Toplevel):
                 query += " AND m.data >= ?"
                 params.append(data_inicio_str + ' 00:00:00')
             except ValueError:
-                pass  # Ignora formato inválido e não filtra por data de início
+                pass
 
         if data_fim_str:
             try:
@@ -275,18 +287,28 @@ class HistoricoMovimentacoes(tk.Toplevel):
                 query += " AND m.data <= ?"
                 params.append(data_fim_str + ' 23:59:59')
             except ValueError:
-                pass  # Ignora formato inválido e não filtra por data de fim
+                pass
 
         query += " ORDER BY m.data DESC"
 
         movimentacoes = self.db.executar(query, tuple(params)).fetchall()
         for mov in movimentacoes:
-            # Substitui None por 'N/A' para fornecedores/usuários excluídos
-            fornecedor_nome = mov[6] if mov[6] else "N/A"
-            usuario_nome = mov[7] if mov[7] else "N/A"
-            self.tree_historico.insert('', tk.END,
-                                       values=(mov[0], mov[1], mov[2], mov[3], mov[4], mov[5], fornecedor_nome,
-                                               usuario_nome))
+            mov_list = list(mov)
+            fornecedor_nome = mov_list[7] if mov_list[7] else "N/A"
+            usuario_nome = mov_list[8] if mov_list[8] else "N/A"
+
+            display_values = (
+                mov_list[0],  # ID Mov.
+                mov_list[1],  # Produto
+                mov_list[2],  # Categoria
+                mov_list[3],  # Tipo
+                mov_list[4],  # Quantidade
+                mov_list[5],  # Data
+                mov_list[6],  # Observação
+                fornecedor_nome,
+                usuario_nome
+            )
+            self.tree_historico.insert('', tk.END, values=display_values)
 
     def _atualizar_historico(self):
         self._filtrar_historico()
